@@ -1,13 +1,6 @@
 const std = @import("std");
 const args = @import("./args.zig");
-// This is to mimic the behavior of zig fetch in 0.14.*.
-// -h, --help
-// --global-cache-dir [path]
-// --debug-hash
-// --save
-// --save=[name]
-// --save-exact
-// --save-exact=[name]
+
 pub fn main() !void {
     const action = args.parse(std.os.argv) catch |err| {
         std.debug.print("Error: {}", .{err});

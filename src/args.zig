@@ -6,6 +6,8 @@ const std = @import("std");
 
 pub fn printUsage() void {
     const usage =
+        \\This command mimic behavior of zig fetch command for 0.14.0.
+        \\
         \\Usage: zigfetch [options] <url>
         \\Usage: zigfetch [options] <path>
         \\
