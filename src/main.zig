@@ -1,8 +1,15 @@
 const std = @import("std");
-const args = @import("./args.zig");
+const cmdline = @import("./cmdline.zig");
 
 pub fn main() !void {
-    const action = args.parse(std.os.argv) catch |err| {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const args = try std.process.argsAlloc(alloc);
+    defer std.process.argsFree(alloc, args);
+
+    const action = cmdline.parse(args) catch |err| {
         std.debug.print("Error: {}", .{err});
     };
 
@@ -15,7 +22,7 @@ pub fn main() !void {
             bw.flush() catch unreachable;
         },
         .help => {
-            args.printUsage();
+            cmdline.printUsage();
             return;
         },
         .save => unreachable,

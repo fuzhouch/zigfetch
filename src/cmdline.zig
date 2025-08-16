@@ -8,8 +8,8 @@ pub fn printUsage() void {
     const usage =
         \\This command mimic behavior of zig fetch command for 0.14.0.
         \\
-        \\Usage: zigfetch [options] <url>
-        \\Usage: zigfetch [options] <path>
+        \\Usage: zf [options] <url>
+        \\Usage: zf [options] <path>
         \\
         \\    Copy a package to one of the following:
         \\    <url> must point to one of the following:
@@ -23,13 +23,17 @@ pub fn printUsage() void {
         \\zigfetch --save https://example.com/andrewk/fun-example-tool/archive/refs/heads/master.tar.gz
         \\
         \\Options:
-        \\ -h, --help                   Print this help and exit
-        \\ --global-cache-dir [path]    Override path to global Zig directory
-        \\ --debug-hash                 Print verbose hash information to stdout
-        \\ --save                       Add the fetched package to build.zig.zon
-        \\ --save=[name]                Add the fetched package to build.zig.zon as name
-        \\ --save-exact                 Add the fetched package to build.zig.zon, storing the URL verbatim
-        \\ --save-exact=[name]          Add the fetched package to build.zig.zon as name, storing the URL verbatim
+        \\ -h, --help                 Print this help and exit
+        \\ --global-cache-dir [path]  Override path to global Zig directory
+        \\ --debug-hash               Print verbose hash information to stdout
+        \\ --save                     Add the fetched package to build.zig.zon
+        \\ --save=[name]              Add the fetched package to build.zig.zon as name
+        \\ --save-exact               Add the fetched package to build.zig.zon, storing the URL verbatim
+        \\ --save-exact=[name]        Add the fetched package to build.zig.zon as name, storing the URL verbatim
+        \\
+        \\ZF specific options:
+        \\ --git-path                 Specify git command line, Default: `git'
+        \\
     ;
     const stdout_fd = std.io.getStdOut().writer();
     var bw = std.io.bufferedWriter(stdout_fd);
@@ -52,12 +56,11 @@ const Action = union(Command) {
     save_exact: ?[]u8,
 };
 
-pub fn parse(args: [][*:0]u8) !Action {
+pub fn parse(args: [][:0]u8) !Action {
     for (args[1..]) |arg| {
-        const argStr: []const u8 = std.mem.span(arg);
-        if (std.mem.eql(u8, argStr, "-h")) {
+        if (std.mem.eql(u8, arg, "-h")) {
             return .help;
-        } else if (std.mem.eql(u8, argStr, "--help")) {
+        } else if (std.mem.eql(u8, arg, "--help")) {
             return .help;
         }
     }

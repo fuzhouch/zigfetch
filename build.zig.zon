@@ -15,7 +15,7 @@
     // original project's identity. Thus it is recommended to leave the comment
     // on the following line intact, so that it shows up in code reviews that
     // modify the field.
-    .fingerprint = 0x17a6f0bbdebae1a5, // Changing this has security and trust implications.
+    .fingerprint = 0x30d847ee7bb86ccd, // Changing this has security and trust implications.
 
     .minimum_zig_version = "0.14.1",
 
