@@ -1,5 +1,5 @@
 .{
-    .name = .zigfetch,
+    .name = .zf,
 
     .version = "0.1.0",
 
