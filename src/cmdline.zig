@@ -3,6 +3,7 @@
 //! works without the needs of downloading any dependency.
 
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub fn printUsage() void {
     const usage =
@@ -56,13 +57,76 @@ const Action = union(Command) {
     save_exact: ?[]u8,
 };
 
-pub fn parse(args: [][:0]u8) !Action {
-    for (args[1..]) |arg| {
-        if (std.mem.eql(u8, arg, "-h")) {
-            return .help;
-        } else if (std.mem.eql(u8, arg, "--help")) {
-            return .help;
+const Cmdline = struct {
+    alloc: std.mem.Allocator,
+    action: Action,
+    global_cache_dir: ?[]const u8,
+    git_path: ?[]const u8,
+
+    pub fn deinit(cmdline: Cmdline) void {
+        if (cmdline.global_cache_dir) |cache_dir| {
+            cmdline.alloc.free(cache_dir);
         }
     }
-    return .unknown;
+};
+
+const ParseError = error{
+    InvalidArgument,
+    MissingArgument,
+};
+
+const default_git_path: []const u8 = "git";
+
+// This function is copied from standard Zig implementation.
+// https://github.com/ziglang/zig/blob/master/src/introspect.zig.
+fn resolveGlobalCacheDir(alloc: std.mem.Allocator) ![]u8 {
+    if (builtin.os.tag == .wasi) {
+        @compileError("On WASI the global cache dir is unsupported");
+    }
+
+    if (try std.zig.EnvVar.ZIG_GLOBAL_CACHE_DIR.get(alloc)) |value| {
+        return value;
+    }
+    const appname = "zig";
+
+    if (builtin.os.tag != .windows) {
+        if (std.zig.EnvVar.XDG_CACHE_HOME.getPosix()) |cache_root| {
+            if (cache_root.len > 0) {
+                return try std.fs.path.join(alloc, &.{ cache_root, appname });
+            }
+        }
+        if (std.zig.EnvVar.HOME.getPosix()) |home| {
+            return try std.fs.path.join(alloc, &.{ home, ".cache", appname });
+        }
+    }
+    return std.fs.getAppDataDir(alloc, appname);
+}
+
+pub fn init(alloc: std.mem.Allocator, args: [][:0]u8) !Cmdline {
+    var cmdline = Cmdline{
+        .alloc = alloc,
+        .action = .unknown,
+        .global_cache_dir = null,
+        .git_path = null,
+    };
+
+    for (args[1..]) |arg| {
+        if (std.mem.eql(u8, arg, "-h")) {
+            cmdline.action = .help;
+        } else if (std.mem.eql(u8, arg, "--help")) {
+            cmdline.action = .help;
+        } else if (std.mem.startsWith(u8, arg, "--global-cache-dir=")) {
+            cmdline.global_cache_dir = arg["--global-cache-dir=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--git-path=")) {
+            cmdline.git_path = arg["--git-path=".len..];
+        }
+    }
+
+    // If user does not specify cache dir or git path, fall
+    // back to default values.
+    if (cmdline.global_cache_dir == null) {
+        cmdline.global_cache_dir = try resolveGlobalCacheDir(alloc);
+    }
+    cmdline.git_path = cmdline.git_path orelse default_git_path;
+    return cmdline;
 }

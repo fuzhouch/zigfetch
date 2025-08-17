@@ -1,19 +1,39 @@
 const std = @import("std");
 const cmdline = @import("./cmdline.zig");
+const builtin = @import("builtin");
 
 pub fn main() !void {
+    var alloc: std.mem.Allocator = undefined;
+    var dbg = std.heap.DebugAllocator(.{}){};
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    if (builtin.mode == .Debug) {
+        alloc = dbg.allocator();
+    } else {
+        alloc = arena.allocator();
+    }
+
+    defer {
+        arena.deinit();
+        const check = dbg.deinit();
+        switch (check) {
+            .ok => {},
+            .leak => {
+                std.debug.print("Memory leaks detected!\n", .{});
+            },
+        }
+    }
 
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
-    const action = cmdline.parse(args) catch |err| {
+    const opts = cmdline.init(alloc, args) catch |err| {
         std.debug.print("Error: {}", .{err});
+        cmdline.printUsage();
+        return;
     };
+    defer opts.deinit();
 
-    switch (action) {
+    switch (opts.action) {
         .unknown => {
             const stdout_fd = std.io.getStdOut().writer();
             var bw = std.io.bufferedWriter(stdout_fd);
