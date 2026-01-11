@@ -7,65 +7,42 @@ const builtin = @import("builtin");
 
 pub fn printUsage() void {
     const usage =
-        \\This command mimic behavior of zig fetch command for 0.14.0.
-        \\
-        \\Usage: zf [options] <url>
-        \\Usage: zf [options] <path>
-        \\
-        \\    Copy a package to one of the following:
-        \\    <url> must point to one of the following:
-        \\    - A git+http / git+https server for the package
-        \\    - A tarball file (with or without compression)
-        \\      containing package source
-        \\    - A git bundle file containing package source
-        \\Examples:
-        \\
-        \\zigfetch --save git+https://example.com/andrewk/fun-example-tool.git
-        \\zigfetch --save https://example.com/andrewk/fun-example-tool/archive/refs/heads/master.tar.gz
+        \\Usage: zf fetch [options] <url>
         \\
         \\Options:
-        \\ -h, --help                 Print this help and exit
-        \\ --global-cache-dir [path]  Override path to global Zig directory
-        \\ --debug-hash               Print verbose hash information to stdout
-        \\ --save                     Add the fetched package to build.zig.zon
-        \\ --save=[name]              Add the fetched package to build.zig.zon as name
-        \\ --save-exact               Add the fetched package to build.zig.zon, storing the URL verbatim
-        \\ --save-exact=[name]        Add the fetched package to build.zig.zon as name, storing the URL verbatim
-        \\
-        \\ZF specific options:
-        \\ --git-path                 Specify git command line, Default: `git'
+        \\ -h, --help      Print this help and exit
+        \\ --save          Add the fetched package to build.zig.zon
         \\
     ;
-    const stdout_fd = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_fd);
-    const stdout = bw.writer();
-    _ = stdout.print("{s}", .{usage}) catch unreachable;
-    bw.flush() catch unreachable;
+    _ = std.debug.print("{s}", .{usage});
 }
 
-const Command = enum {
-    unknown,
+pub const FetchOptions = struct {
+    save: bool = false,
+    url: []const u8 = "",
+};
+
+pub const ActionTag = enum {
+    none,
     help,
-    save,
-    save_exact,
+    fetch,
 };
 
-const Action = union(Command) {
-    unknown: void,
+pub const Action = union(ActionTag) {
+    none: void,
     help: void,
-    save: ?[]u8,
-    save_exact: ?[]u8,
+    fetch: FetchOptions,
 };
 
-const Cmdline = struct {
+pub const Cmdline = struct {
     alloc: std.mem.Allocator,
     action: Action,
     global_cache_dir: ?[]const u8,
-    git_path: ?[]const u8,
+    args: [][:0]u8,
 
-    pub fn deinit(cmdline: Cmdline) void {
-        if (cmdline.global_cache_dir) |cache_dir| {
-            cmdline.alloc.free(cache_dir);
+    pub fn deinit(self: Cmdline) void {
+        if (self.global_cache_dir) |cache_dir| {
+            self.alloc.free(cache_dir);
         }
     }
 };
@@ -74,8 +51,6 @@ const ParseError = error{
     InvalidArgument,
     MissingArgument,
 };
-
-const default_git_path: []const u8 = "git";
 
 // This function is copied from standard Zig implementation.
 // https://github.com/ziglang/zig/blob/master/src/introspect.zig.
@@ -105,28 +80,59 @@ fn resolveGlobalCacheDir(alloc: std.mem.Allocator) ![]u8 {
 pub fn init(alloc: std.mem.Allocator, args: [][:0]u8) !Cmdline {
     var cmdline = Cmdline{
         .alloc = alloc,
-        .action = .unknown,
+        .action = .none,
         .global_cache_dir = null,
-        .git_path = null,
+        .args = args,
     };
 
-    for (args[1..]) |arg| {
-        if (std.mem.eql(u8, arg, "-h")) {
-            cmdline.action = .help;
-        } else if (std.mem.eql(u8, arg, "--help")) {
-            cmdline.action = .help;
-        } else if (std.mem.startsWith(u8, arg, "--global-cache-dir=")) {
-            cmdline.global_cache_dir = arg["--global-cache-dir=".len..];
-        } else if (std.mem.startsWith(u8, arg, "--git-path=")) {
-            cmdline.git_path = arg["--git-path=".len..];
+    // Attempt to resolve global cache dir.
+    cmdline.global_cache_dir = try resolveGlobalCacheDir(alloc);
+
+    if (args.len < 2) {
+        return cmdline;
+    }
+
+    const cmd = args[1];
+    if (std.mem.eql(u8, cmd, "-h") or std.mem.eql(u8, cmd, "--help")) {
+        cmdline.action = .help;
+        return cmdline;
+    }
+
+    if (std.mem.eql(u8, cmd, "fetch")) {
+        var opts = FetchOptions{};
+        var i: usize = 2;
+        var url_found = false;
+
+        while (i < args.len) : (i += 1) {
+            const arg = args[i];
+            if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
+                cmdline.action = .help;
+                return cmdline;
+            } else if (std.mem.eql(u8, arg, "--save")) {
+                opts.save = true;
+            } else if (std.mem.startsWith(u8, arg, "-")) {
+                // Unknown option, for now we treat it as invalid if strict,
+                // but for simplicity we might just ignore or print error?
+                // Let's print error in main or just ignore for now?
+                // The spec is simple.
+            } else {
+                if (!url_found) {
+                    opts.url = arg;
+                    url_found = true;
+                }
+            }
+        }
+
+        if (url_found) {
+            cmdline.action = .{ .fetch = opts };
+        } else {
+            // Fetch without URL?
+            // Maybe user just typed `zf fetch`.
+            // We can let action be none or help or handle in main.
+            // Let's set it to fetch with empty url, main should check.
+            cmdline.action = .{ .fetch = opts };
         }
     }
 
-    // If user does not specify cache dir or git path, fall
-    // back to default values.
-    if (cmdline.global_cache_dir == null) {
-        cmdline.global_cache_dir = try resolveGlobalCacheDir(alloc);
-    }
-    cmdline.git_path = cmdline.git_path orelse default_git_path;
     return cmdline;
 }

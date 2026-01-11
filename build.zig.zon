@@ -17,7 +17,7 @@
     // modify the field.
     .fingerprint = 0x30d847ee7bb86ccd, // Changing this has security and trust implications.
 
-    .minimum_zig_version = "0.14.1",
+    .minimum_zig_version = "0.15.0",
 
     .dependencies = .{
         // .<dependency_name> = . {
